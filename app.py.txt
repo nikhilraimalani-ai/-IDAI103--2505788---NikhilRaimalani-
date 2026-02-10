@@ -1,0 +1,1025 @@
+import streamlit as st
+import google.generativeai as genai
+import pandas as pd
+from datetime import datetime, timedelta
+
+# ============================================================================
+# PAGE CONFIGURATION
+# ============================================================================
+st.set_page_config(
+    page_title="CoachBot AI - Tennis Coach",
+    page_icon="🎾",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================================================
+# CUSTOM CSS FOR PROFESSIONAL STYLING
+# ============================================================================
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #1E3A8A;
+        text-align: center;
+        margin-bottom: 0.5rem;
+    }
+    .sub-header {
+        font-size: 1.2rem;
+        color: #64748B;
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    .stButton>button {
+        width: 100%;
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        border: none;
+        transition: all 0.3s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    }
+    .feature-card {
+        background-color: #F8FAFC;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #2563EB;
+        margin-bottom: 1rem;
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ============================================================================
+# SIDEBAR - API KEY AND PLAYER PROFILE
+# ============================================================================
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/000000/tennis.png", width=80)
+    st.title("🎾 CoachBot AI")
+    st.markdown("*Your AI-Powered Tennis Coach*")
+    st.markdown("---")
+    
+    # API Key Input
+    st.subheader("🔐 API Configuration")
+    api_key = st.text_input(
+        "Gemini 1.5 Pro API Key",
+        type="password",
+        help="Get your API key from https://aistudio.google.com/app/apikey",
+        placeholder="Enter your API key here..."
+    )
+    
+    if api_key:
+        st.success("✅ API Connected")
+    else:
+        st.warning("⚠️ API key required")
+    
+    st.markdown("---")
+    
+    # Player Profile Inputs
+    st.subheader("👤 Player Profile")
+    
+    player_name = st.text_input(
+        "Player Name",
+        placeholder="Enter your name",
+        help="Your first name or nickname"
+    )
+    
+    age = st.slider(
+        "Age",
+        min_value=10,
+        max_value=25,
+        value=16,
+        help="Player's age in years"
+    )
+    
+    sport = st.selectbox(
+        "Sport",
+        ["Tennis"],
+        help="Currently optimized for tennis"
+    )
+    
+    position = st.selectbox(
+        "Playing Position/Style",
+        [
+            "Singles Player - Baseline",
+            "Singles Player - Serve & Volley",
+            "Singles Player - All-Court",
+            "Doubles Player - Net Player",
+            "Doubles Player - Baseline"
+        ],
+        help="Your primary playing position and style"
+    )
+    
+    court_surface = st.selectbox(
+        "Preferred Court Surface",
+        ["Hard Court", "Clay Court", "Grass Court", "Indoor Carpet"],
+        help="Surface you train on most frequently"
+    )
+    
+    skill_level = st.selectbox(
+        "Skill Level",
+        [
+            "Beginner (0-2 years)",
+            "Intermediate (2-4 years)",
+            "Advanced (4-6 years)",
+            "Competitive (6+ years)",
+            "Professional/Academy"
+        ]
+    )
+    
+    first_serve_percentage = st.slider(
+        "First Serve % (Current)",
+        min_value=30,
+        max_value=85,
+        value=65,
+        step=1,
+        help="Your current first serve success rate"
+    )
+    
+    injury_history = st.multiselect(
+        "Injury History / Risk Zones",
+        [
+            "None - Healthy",
+            "Shoulder (Rotator Cuff)",
+            "Elbow (Tennis Elbow)",
+            "Wrist Strain",
+            "Lower Back Pain",
+            "Knee (ACL/Meniscus)",
+            "Ankle Sprain",
+            "Hip Flexor"
+        ],
+        default=["None - Healthy"],
+        help="Select any current or past injuries"
+    )
+    
+    diet_type = st.selectbox(
+        "Dietary Preference",
+        ["Omnivore (All foods)", "Vegetarian", "Vegan", "Pescatarian", "Gluten-Free"],
+        help="Your dietary restrictions or preferences"
+    )
+    
+    training_goal = st.selectbox(
+        "Primary Training Goal",
+        [
+            "Build Stamina & Endurance",
+            "Improve Power & Speed",
+            "Enhance Agility & Footwork",
+            "Post-Injury Recovery",
+            "Tournament Preparation",
+            "Technical Skill Development",
+            "Mental Toughness"
+        ]
+    )
+    
+    st.markdown("---")
+    st.caption("💡 Complete your profile for personalized coaching")
+
+# ============================================================================
+# MAIN CONTENT AREA
+# ============================================================================
+st.markdown('<div class="main-header">🎾 CoachBot AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">AI-Powered Personal Tennis Coach for Youth Athletes</div>', unsafe_allow_html=True)
+
+# Display player info if name is provided
+if player_name:
+    st.info(f"👋 Welcome, **{player_name}**! | Age: {age} | Level: {skill_level} | Goal: {training_goal}")
+
+# ============================================================================
+# API CONFIGURATION & MODEL SETUP
+# ============================================================================
+if api_key:
+    try:
+        genai.configure(api_key=api_key)
+        st.success("✅ Gemini 1.5 Pro Model Configured Successfully!")
+    except Exception as e:
+        st.error(f"❌ Error configuring API: {str(e)}")
+else:
+    st.warning("⚠️ Please enter your Gemini 1.5 Pro API Key in the sidebar to activate CoachBot")
+
+# ============================================================================
+# HELPER FUNCTION - GENERATE AI COACHING RESPONSE
+# ============================================================================
+def generate_coaching_advice(prompt_template, user_data, temperature=0.3, feature_name=""):
+    """
+    Generate personalized coaching advice using Gemini 1.5 Pro
+    
+    Args:
+        prompt_template: The base coaching prompt
+        user_data: Dictionary containing user profile data
+        temperature: Controls creativity (0.3=technical, 0.7=creative)
+        feature_name: Name of the coaching feature being used
+    
+    Returns:
+        Generated coaching response
+    """
+    if not api_key:
+        return "⚠️ Please configure your Gemini API key in the sidebar first."
+    
+    try:
+        # Format the prompt with user data
+        formatted_prompt = prompt_template.format(**user_data)
+        
+        # Initialize the model
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        
+        # Generate response with configured parameters
+        response = model.generate_content(
+            formatted_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=2048,
+                top_p=0.95,
+                top_k=40
+            )
+        )
+        
+        return response.text
+    
+    except Exception as e:
+        return f"❌ Error generating response: {str(e)}\n\nPlease check your API key and try again."
+
+# ============================================================================
+# HELPER FUNCTION - CREATE TRAINING SCHEDULES
+# ============================================================================
+def create_weekly_training_schedule(focus_area, injury_safe=True):
+    """
+    Create a detailed weekly training schedule
+    
+    Args:
+        focus_area: The coaching feature focus
+        injury_safe: Whether to modify for injury recovery
+    
+    Returns:
+        pandas DataFrame with training schedule
+    """
+    schedule_data = {
+        'Day': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+        'Morning Session (9-11 AM)': [
+            'Court Drills - Groundstrokes',
+            'Cardio & Agility Training',
+            'Match Play Practice',
+            'Strength & Conditioning',
+            'Technical Skills Focus',
+            'Tournament Simulation',
+            'Active Recovery'
+        ],
+        'Afternoon Session (3-5 PM)': [
+            'Serve Practice & Returns',
+            'Tactical Pattern Play',
+            'Video Analysis Session',
+            'Mental Training & Yoga',
+            'Live Hitting with Partner',
+            'Competitive Match Play',
+            'Stretching & Mobility'
+        ],
+        'Duration (hours)': [2.5, 2.5, 3.0, 2.0, 2.5, 3.5, 1.5],
+        'Intensity': ['High', 'Medium', 'High', 'High', 'Medium', 'Very High', 'Low'],
+        'Focus': [
+            'Consistency',
+            'Movement',
+            'Competition',
+            'Power',
+            'Precision',
+            'Mental Strength',
+            'Recovery'
+        ]
+    }
+    
+    df = pd.DataFrame(schedule_data)
+    
+    # Modify for injury recovery
+    if injury_safe and "None - Healthy" not in injury_history:
+        df['Notes'] = [
+            'Low-impact modifications',
+            'Pool-based cardio alternative',
+            'Reduced intensity',
+            'Focus on uninjured areas',
+            'Light technique work',
+            'Monitor pain levels',
+            'Extra recovery time'
+        ]
+    
+    return df
+
+def create_nutrition_plan():
+    """Create a sample daily nutrition plan"""
+    nutrition_data = {
+        'Meal': ['Breakfast', 'Mid-Morning', 'Lunch', 'Pre-Training', 'Post-Training', 'Dinner', 'Before Bed'],
+        'Time': ['7:00 AM', '10:00 AM', '12:30 PM', '2:30 PM', '5:30 PM', '7:30 PM', '9:30 PM'],
+        'Sample Foods': [
+            'Oatmeal, Banana, Eggs, OJ',
+            'Greek Yogurt, Berries, Nuts',
+            'Grilled Chicken, Rice, Vegetables',
+            'Energy Bar, Apple',
+            'Protein Shake, Banana',
+            'Salmon, Sweet Potato, Salad',
+            'Cottage Cheese, Almonds'
+        ],
+        'Calories': [450, 200, 600, 250, 300, 550, 150],
+        'Focus': [
+            'Energy & Protein',
+            'Quick Fuel',
+            'Balanced Macros',
+            'Pre-Workout Energy',
+            'Recovery',
+            'Repair & Growth',
+            'Slow-Release Protein'
+        ]
+    }
+    
+    return pd.DataFrame(nutrition_data)
+
+# ============================================================================
+# PREPARE USER DATA FOR PROMPTS
+# ============================================================================
+user_profile = {
+    'name': player_name if player_name else "Player",
+    'age': age,
+    'sport': sport,
+    'position': position,
+    'surface': court_surface,
+    'skill': skill_level,
+    'serve_pct': first_serve_percentage,
+    'injuries': ", ".join(injury_history),
+    'diet': diet_type,
+    'goal': training_goal
+}
+
+# ============================================================================
+# SESSION STATE MANAGEMENT
+# ============================================================================
+if 'current_response' not in st.session_state:
+    st.session_state.current_response = ""
+if 'current_feature' not in st.session_state:
+    st.session_state.current_feature = ""
+if 'show_schedule' not in st.session_state:
+    st.session_state.show_schedule = False
+if 'show_nutrition' not in st.session_state:
+    st.session_state.show_nutrition = False
+
+# ============================================================================
+# FEATURE PROMPTS (10 REQUIRED PROMPTS AS PER ASSIGNMENT)
+# ============================================================================
+
+# Each prompt is carefully crafted to be:
+# 1. Position-specific
+# 2. Injury-aware
+# 3. Age-appropriate
+# 4. Goal-oriented
+# 5. Evidence-based
+
+PROMPTS = {
+    "position_workout": {
+        "name": "🎯 Position-Specific Workout Plan",
+        "temperature": 0.3,
+        "prompt": """You are a professional tennis strength and conditioning coach specializing in youth athlete development.
+
+Create a comprehensive, position-specific workout plan for:
+- Player: {name}, Age: {age}
+- Position/Style: {position}
+- Court Surface: {surface}
+- Current Skill Level: {skill}
+- Training Goal: {goal}
+
+Provide a DETAILED workout plan including:
+1. **Warm-up routine** (10-15 minutes) specific to their position
+2. **Position-specific drills** (3-5 exercises) that enhance their playing style
+3. **Strength training exercises** (sets, reps, rest periods)
+4. **Agility and footwork drills** optimized for {surface}
+5. **Cool-down and recovery protocol**
+
+Make the plan actionable, safe for youth athletes, and progressive. Include specific metrics to track improvement.
+"""
+    },
+    
+    "injury_recovery": {
+        "name": "🏥 Safe Injury Recovery Training",
+        "temperature": 0.3,
+        "prompt": """You are a certified sports physiotherapist and tennis rehabilitation specialist.
+
+Create a SAFE, progressive return-to-play training program for:
+- Player: {name}, Age: {age}
+- Injury History/Risk Zones: {injuries}
+- Current Training Goal: {goal}
+- Playing Position: {position}
+
+Provide a comprehensive recovery plan including:
+1. **Current injury status assessment** - what to monitor
+2. **Safe exercises** that avoid re-injury (specific movements, modifications)
+3. **Progressive loading protocol** - how to gradually increase intensity
+4. **Strengthening exercises** for injury-prone areas
+5. **Red flags** - when to stop and seek medical help
+6. **Timeline expectations** for return to full training
+7. **Preventive measures** to avoid future injuries
+
+Focus on SAFETY FIRST. Be specific about what movements to avoid and what modifications to make during training.
+"""
+    },
+    
+    "tactical_strategy": {
+        "name": "🧠 Tactical Coaching & Game Strategy",
+        "temperature": 0.7,
+        "prompt": """You are an experienced professional tennis coach with expertise in tactical game planning.
+
+Develop a tactical strategy guide for:
+- Player: {name}, Age: {age}
+- Playing Position/Style: {position}
+- Court Surface: {surface}
+- Skill Level: {skill}
+
+Provide tactical coaching covering:
+1. **Court positioning strategy** for their specific playing style
+2. **Shot selection priorities** based on position and surface
+3. **Pattern play tactics** - specific point-construction patterns to practice
+4. **Opponent exploitation** - how to identify and attack weaknesses
+5. **Surface-specific tactics** for {surface}
+6. **Match management** - handling crucial points, tiebreaks, momentum shifts
+7. **Practice drills** to develop tactical awareness
+
+Make it practical and game-applicable. Include specific scenarios and decision-making frameworks.
+"""
+    },
+    
+    "nutrition_guide": {
+        "name": "🥗 Personalized Nutrition & Hydration",
+        "temperature": 0.3,
+        "prompt": """You are a certified sports nutritionist specializing in youth tennis players.
+
+Create a comprehensive nutrition plan for:
+- Player: {name}, Age: {age}
+- Dietary Preference: {diet}
+- Training Goal: {goal}
+- Training Intensity: High (6 days/week)
+
+Provide a detailed nutrition guide including:
+1. **Daily caloric needs** and macronutrient breakdown (protein/carbs/fats)
+2. **Meal timing strategy** around training sessions
+3. **Pre-match nutrition** (what to eat 3 hours, 1 hour, 30 min before)
+4. **During-match fueling** (snacks, hydration, electrolytes)
+5. **Post-training recovery nutrition** (30-min window, 2-hour window)
+6. **Sample meal plan** for a typical training day
+7. **Hydration protocol** - how much water, when to drink, electrolyte timing
+8. **Supplements** (if any) appropriate for age {age}
+9. **Foods to avoid** before competition
+
+Ensure all recommendations are age-appropriate and align with {diet} dietary preferences.
+"""
+    },
+    
+    "mental_training": {
+        "name": "🧘 Mental Toughness & Sports Psychology",
+        "temperature": 0.7,
+        "prompt": """You are a sports psychologist specializing in tennis and youth athlete mental performance.
+
+Create a mental toughness training program for:
+- Player: {name}, Age: {age}
+- Current Goal: {goal}
+- Skill Level: {skill}
+
+Develop a comprehensive mental training plan covering:
+1. **Pre-match mental preparation** routine (night before, morning of, warm-up)
+2. **Pressure management techniques** for crucial points (break points, set points, match points)
+3. **Emotional regulation** strategies - recovering from mistakes, bad calls, frustration
+4. **Focus and concentration drills** - maintaining attention during long rallies/matches
+5. **Visualization exercises** - specific scenarios to visualize daily
+6. **Positive self-talk** - replacing negative thoughts with constructive ones
+7. **Between-point rituals** to reset mentally
+8. **Confidence building** exercises for age {age}
+9. **Match analysis** - learning from losses without dwelling
+
+Make it practical with specific exercises they can do daily. Include scripts for self-talk and detailed visualization scenarios.
+"""
+    },
+    
+    "serve_optimization": {
+        "name": "⚡ Serve Technique & Power Development",
+        "temperature": 0.3,
+        "prompt": """You are a professional tennis serve technique specialist and biomechanics expert.
+
+Create a serve optimization program for:
+- Player: {name}, Age: {age}
+- Current 1st Serve %: {serve_pct}%
+- Position: {position}
+- Injury Considerations: {injuries}
+
+Develop a comprehensive serve improvement plan:
+1. **Technical analysis** - common issues at {serve_pct}% first serve percentage
+2. **Biomechanical checkpoints** - grip, toss, trophy position, contact point, follow-through
+3. **Specific drills** to improve consistency (with target percentages to achieve)
+4. **Power development exercises** (safe for age {age} with injury awareness for {injuries})
+5. **Serve variations** - flat, slice, kick serves and when to use each
+6. **Placement strategies** - wide/T/body serving patterns
+7. **Second serve tactics** - developing a reliable, safe second serve
+8. **Serve + 1 patterns** - what to do after the serve
+9. **Video analysis checklist** - what to look for when reviewing serves
+10. **Progressive benchmarks** - getting from {serve_pct}% to 70%+ over 8 weeks
+
+Include rep counts, rest periods, and specific metrics to track. Make it injury-safe given: {injuries}
+"""
+    },
+    
+    "footwork_agility": {
+        "name": "👟 Footwork & Movement Training",
+        "temperature": 0.3,
+        "prompt": """You are a tennis movement coach and agility specialist.
+
+Design a footwork and agility training program for:
+- Player: {name}, Age: {age}
+- Court Surface: {surface}
+- Position: {position}
+- Injury History: {injuries}
+
+Create a comprehensive movement training plan:
+1. **Surface-specific movement patterns** for {surface}
+2. **Agility ladder drills** (5-7 drills with descriptions and progression)
+3. **Cone drills** for directional changes and court coverage
+4. **Split-step timing** exercises and triggers
+5. **Recovery footwork** - getting back to center efficiently
+6. **Lateral movement** drills (side-to-side speed)
+7. **Forward/backward movement** (approaching net, defending lobs)
+8. **Plyometric exercises** for explosive first step (age-appropriate)
+9. **Balance and stability work** 
+10. **Sport-specific conditioning** - tennis-style interval training
+
+For each drill, provide:
+- Setup instructions
+- Movement pattern description
+- Sets and reps
+- Rest periods
+- Progression options
+
+Ensure all exercises are SAFE for: {injuries}. Modify high-impact movements if needed.
+"""
+    },
+    
+    "match_analysis": {
+        "name": "📊 Performance Analysis & Match Stats",
+        "temperature": 0.3,
+        "prompt": """You are a professional tennis analyst and data-driven performance coach.
+
+Create a match analysis framework for:
+- Player: {name}, Age: {age}
+- Playing Style: {position}
+- Current Level: {skill}
+
+Develop a comprehensive analysis system:
+1. **Key Performance Indicators (KPIs)** to track for {position} style:
+   - Serve metrics (1st serve %, aces, double faults, points won on serve)
+   - Return metrics (return points won, break point conversion)
+   - Rally metrics (winners, unforced errors, winner/error ratio)
+   - Movement metrics (court coverage, defensive shots)
+
+2. **Match charting system** - how to track patterns during matches:
+   - Where opponents hit under pressure
+   - Your go-to patterns that work
+   - Situations where you struggle
+
+3. **Post-match review checklist** - questions to ask after every match
+
+4. **Opponent scouting template** - what to observe and note
+
+5. **Statistical benchmarks** for {skill} level - what numbers to target
+
+6. **Using data to adjust strategy** mid-match
+
+7. **Long-term tracking** - identifying trends over weeks/months
+
+8. **Video analysis guide** - what to look for when reviewing footage
+
+Make it practical and usable by a {age}-year-old athlete. Include simple templates or checklists.
+"""
+    },
+    
+    "tournament_prep": {
+        "name": "🏆 Tournament Preparation Protocol",
+        "temperature": 0.7,
+        "prompt": """You are an experienced tennis coach who has prepared athletes for professional tournaments.
+
+Create a complete tournament preparation plan for:
+- Player: {name}, Age: {age}
+- Skill Level: {skill}
+- Training Goal: {goal}
+
+Develop a week-by-week tournament prep protocol:
+
+**3 WEEKS BEFORE:**
+1. Training intensity and volume management
+2. Technical focus areas
+3. Match play simulation scheduling
+
+**1 WEEK BEFORE:**
+1. Tapering strategy - reducing volume while maintaining intensity
+2. Mental preparation routine
+3. Equipment check (racquets, strings, shoes, gear)
+4. Travel planning (if applicable)
+
+**3 DAYS BEFORE:**
+1. Light practice sessions - what to focus on
+2. Nutrition prep - carb loading strategy
+3. Sleep optimization
+4. Visualization exercises
+
+**DAY BEFORE:**
+1. Practice court session - duration and focus
+2. Meal timing and hydration
+3. Mental routine - managing pre-match nerves
+4. Match strategy review
+
+**TOURNAMENT DAY:**
+1. Morning routine - wake time, breakfast, arrival time
+2. Pre-match warm-up protocol (30-45 min)
+3. Between-match recovery (if multiple matches)
+4. Post-match routine
+
+**MENTAL PREPARATION:**
+1. Tournament day mindset strategies
+2. Handling draws and unseeded opponents
+3. Managing expectations and pressure
+4. Between-match mental reset
+
+Provide specific, actionable steps for each phase. Include time management tips for age {age}.
+"""
+    },
+    
+    "recovery_protocol": {
+        "name": "💆 Recovery & Injury Prevention",
+        "temperature": 0.3,
+        "prompt": """You are a sports recovery specialist and athletic trainer for tennis players.
+
+Design a comprehensive recovery and injury prevention program for:
+- Player: {name}, Age: {age}
+- Injury History: {injuries}
+- Training Intensity: 6 days/week
+- Position: {position}
+
+Create a detailed recovery protocol covering:
+
+**DAILY RECOVERY ROUTINE:**
+1. **Post-training cooldown** (15-20 min) - specific stretches and mobility work
+2. **Hydration and nutrition** - what to consume within 30 min of training
+3. **Sleep optimization** - hours needed at age {age}, sleep hygiene tips
+4. **Active recovery techniques** - light cardio, pool work, yoga
+
+**WEEKLY RECOVERY PRACTICES:**
+1. **Foam rolling routine** - specific areas for tennis players (shoulders, IT band, calves, etc.)
+2. **Stretching protocol** - dynamic vs. static, which muscles to target
+3. **Massage techniques** - self-massage or professional therapy schedule
+
+**INJURY PREVENTION EXERCISES:**
+1. **Shoulder stability** work (rotator cuff exercises) - especially important given {injuries}
+2. **Core strengthening** - preventing lower back issues
+3. **Ankle stability** drills
+4. **Wrist and forearm** strengthening
+5. **Hip mobility** and glute activation
+
+**MONITORING & MAINTENANCE:**
+1. **Warning signs** - when to rest vs. push through
+2. **Load management** - tracking training volume to prevent overtraining
+3. **Periodization** - hard weeks vs. easy weeks
+
+**RECOVERY TOOLS:**
+1. Recommended recovery aids (ice, heat, compression, etc.)
+2. When and how to use each tool
+3. Cost-effective alternatives for young athletes
+
+Given injury history of "{injuries}", provide SPECIFIC modifications and extra precautions.
+"""
+    }
+}
+
+# ============================================================================
+# FEATURE BUTTONS LAYOUT (10 COACHING FEATURES)
+# ============================================================================
+st.markdown("---")
+st.markdown("### 🚀 Select Your Coaching Feature")
+st.markdown("Choose from 10 AI-powered coaching modules designed specifically for tennis players:")
+
+# Create 3 columns for organized button layout
+col1, col2, col3 = st.columns(3)
+
+# Row 1
+with col1:
+    if st.button(PROMPTS["position_workout"]["name"]):
+        st.session_state.current_feature = PROMPTS["position_workout"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["position_workout"]["prompt"],
+            user_profile,
+            PROMPTS["position_workout"]["temperature"],
+            PROMPTS["position_workout"]["name"]
+        )
+        st.session_state.show_schedule = True
+        st.session_state.show_nutrition = False
+
+with col2:
+    if st.button(PROMPTS["injury_recovery"]["name"]):
+        st.session_state.current_feature = PROMPTS["injury_recovery"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["injury_recovery"]["prompt"],
+            user_profile,
+            PROMPTS["injury_recovery"]["temperature"],
+            PROMPTS["injury_recovery"]["name"]
+        )
+        st.session_state.show_schedule = True
+        st.session_state.show_nutrition = False
+
+with col3:
+    if st.button(PROMPTS["tactical_strategy"]["name"]):
+        st.session_state.current_feature = PROMPTS["tactical_strategy"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["tactical_strategy"]["prompt"],
+            user_profile,
+            PROMPTS["tactical_strategy"]["temperature"],
+            PROMPTS["tactical_strategy"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = False
+
+# Row 2
+col4, col5, col6 = st.columns(3)
+
+with col4:
+    if st.button(PROMPTS["nutrition_guide"]["name"]):
+        st.session_state.current_feature = PROMPTS["nutrition_guide"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["nutrition_guide"]["prompt"],
+            user_profile,
+            PROMPTS["nutrition_guide"]["temperature"],
+            PROMPTS["nutrition_guide"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = True
+
+with col5:
+    if st.button(PROMPTS["mental_training"]["name"]):
+        st.session_state.current_feature = PROMPTS["mental_training"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["mental_training"]["prompt"],
+            user_profile,
+            PROMPTS["mental_training"]["temperature"],
+            PROMPTS["mental_training"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = False
+
+with col6:
+    if st.button(PROMPTS["serve_optimization"]["name"]):
+        st.session_state.current_feature = PROMPTS["serve_optimization"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["serve_optimization"]["prompt"],
+            user_profile,
+            PROMPTS["serve_optimization"]["temperature"],
+            PROMPTS["serve_optimization"]["name"]
+        )
+        st.session_state.show_schedule = True
+        st.session_state.show_nutrition = False
+
+# Row 3
+col7, col8, col9 = st.columns(3)
+
+with col7:
+    if st.button(PROMPTS["footwork_agility"]["name"]):
+        st.session_state.current_feature = PROMPTS["footwork_agility"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["footwork_agility"]["prompt"],
+            user_profile,
+            PROMPTS["footwork_agility"]["temperature"],
+            PROMPTS["footwork_agility"]["name"]
+        )
+        st.session_state.show_schedule = True
+        st.session_state.show_nutrition = False
+
+with col8:
+    if st.button(PROMPTS["match_analysis"]["name"]):
+        st.session_state.current_feature = PROMPTS["match_analysis"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["match_analysis"]["prompt"],
+            user_profile,
+            PROMPTS["match_analysis"]["temperature"],
+            PROMPTS["match_analysis"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = False
+
+with col9:
+    if st.button(PROMPTS["tournament_prep"]["name"]):
+        st.session_state.current_feature = PROMPTS["tournament_prep"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["tournament_prep"]["prompt"],
+            user_profile,
+            PROMPTS["tournament_prep"]["temperature"],
+            PROMPTS["tournament_prep"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = False
+
+# Row 4 - Centered
+col10, col11, col12 = st.columns([1, 1, 1])
+
+with col11:
+    if st.button(PROMPTS["recovery_protocol"]["name"]):
+        st.session_state.current_feature = PROMPTS["recovery_protocol"]["name"]
+        st.session_state.current_response = generate_coaching_advice(
+            PROMPTS["recovery_protocol"]["prompt"],
+            user_profile,
+            PROMPTS["recovery_protocol"]["temperature"],
+            PROMPTS["recovery_protocol"]["name"]
+        )
+        st.session_state.show_schedule = False
+        st.session_state.show_nutrition = False
+
+# ============================================================================
+# DISPLAY AI RESPONSE SECTION
+# ============================================================================
+if st.session_state.current_response:
+    st.markdown("---")
+    
+    # Feature Header
+    st.markdown(f"### {st.session_state.current_feature}")
+    
+    # Display timestamp
+    current_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    st.caption(f"Generated on {current_time} | Model: Gemini 1.5 Pro")
+    
+    # Display the AI-generated coaching advice
+    with st.container():
+        st.markdown(st.session_state.current_response)
+    
+    # Display Weekly Training Schedule if applicable
+    if st.session_state.show_schedule:
+        st.markdown("---")
+        st.markdown("### 📅 Recommended Weekly Training Schedule")
+        st.caption(f"Personalized for: {user_profile['name']} | Focus: {st.session_state.current_feature}")
+        
+        injury_safe = "None - Healthy" not in injury_history
+        schedule_df = create_weekly_training_schedule(st.session_state.current_feature, injury_safe)
+        
+        # Display the schedule
+        st.dataframe(
+            schedule_df,
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Training Summary Metrics
+        st.markdown("#### 📈 Weekly Training Summary")
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+        
+        with metric_col1:
+            total_hours = schedule_df['Duration (hours)'].sum()
+            st.metric("Total Training Hours", f"{total_hours:.1f} hrs")
+        
+        with metric_col2:
+            training_days = len(schedule_df[schedule_df['Intensity'] != 'Low'])
+            st.metric("Active Training Days", f"{training_days} days")
+        
+        with metric_col3:
+            high_intensity = len(schedule_df[schedule_df['Intensity'].isin(['High', 'Very High'])])
+            st.metric("High Intensity Sessions", str(high_intensity))
+        
+        with metric_col4:
+            recovery_hours = schedule_df[schedule_df['Intensity'] == 'Low']['Duration (hours)'].sum()
+            st.metric("Recovery Hours", f"{recovery_hours:.1f} hrs")
+    
+    # Display Nutrition Plan if applicable
+    if st.session_state.show_nutrition:
+        st.markdown("---")
+        st.markdown("### 🍽️ Sample Daily Nutrition Plan")
+        st.caption(f"Customized for: {user_profile['diet']} diet | Age: {user_profile['age']}")
+        
+        nutrition_df = create_nutrition_plan()
+        
+        st.dataframe(
+            nutrition_df,
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Nutrition Summary
+        st.markdown("#### 📊 Daily Nutrition Summary")
+        nut_col1, nut_col2, nut_col3 = st.columns(3)
+        
+        with nut_col1:
+            total_calories = nutrition_df['Calories'].sum()
+            st.metric("Total Daily Calories", f"{total_calories} kcal")
+        
+        with nut_col2:
+            meals = len(nutrition_df)
+            st.metric("Meals/Snacks Per Day", str(meals))
+        
+        with nut_col3:
+            avg_meal = total_calories / meals
+            st.metric("Avg Calories Per Meal", f"{avg_meal:.0f} kcal")
+
+# ============================================================================
+# INFORMATION SECTION
+# ============================================================================
+st.markdown("---")
+
+# Create expandable sections for additional information
+with st.expander("ℹ️ About CoachBot AI"):
+    st.markdown("""
+    **CoachBot AI** is an AI-powered tennis coaching assistant designed to bridge the gap in professional coaching accessibility for young athletes.
+    
+    **Key Features:**
+    - 10 specialized coaching modules covering all aspects of tennis training
+    - Personalized advice based on your position, skill level, and goals
+    - Injury-aware training modifications for safe recovery
+    - Evidence-based recommendations from sports science research
+    - Position-specific tactical guidance
+    - Comprehensive nutrition and mental training support
+    
+    **How It Works:**
+    1. Complete your player profile in the sidebar
+    2. Select a coaching feature button
+    3. Receive AI-generated personalized coaching advice
+    4. Review recommended training schedules and nutrition plans
+    
+    **Technology:**
+    - Powered by Google's Gemini 1.5 Pro AI model
+    - Temperature tuning: 0.3 for technical accuracy, 0.7 for creative strategies
+    - Context-aware prompt engineering for personalized responses
+    """)
+
+with st.expander("🎓 Assignment Information"):
+    st.markdown("""
+    **Course:** Generative AI (IDAI103)  
+    **Assignment:** Building AI-Powered Web Applications for Real-World Solutions  
+    **Scenario:** Creating a Smart Fitness Assistance Web App Powered by Generative AI
+    
+    **Project Objectives:**
+    - Integrate Gemini 1.5 Pro API for real-time AI coaching
+    - Design 10+ specialized prompts for tennis coaching scenarios
+    - Implement position-based, injury-aware training recommendations
+    - Deploy functional web application using Streamlit
+    - Provide accessible coaching for under-resourced youth athletes
+    
+    **Key Technologies:**
+    - Python 3.8+
+    - Streamlit (Web Framework)
+    - Google Generative AI SDK (Gemini 1.5 Pro)
+    - Pandas (Data Display)
+    """)
+
+with st.expander("⚠️ Disclaimer & Safety"):
+    st.markdown("""
+    **Important Safety Information:**
+    
+    ⚠️ **Medical Disclaimer:** CoachBot AI provides general fitness and training guidance based on AI-generated recommendations. 
+    This tool does NOT replace professional medical advice, diagnosis, or treatment.
+    
+    **Always Consult Professionals:**
+    - Certified tennis coaches for technical instruction
+    - Licensed sports medicine doctors for injury diagnosis and treatment
+    - Registered dietitians for personalized nutrition plans
+    - Sports psychologists for mental health support
+    
+    **When to Seek Immediate Medical Help:**
+    - Sharp, sudden pain during activity
+    - Swelling that doesn't reduce with RICE protocol
+    - Inability to bear weight or move normally
+    - Numbness or tingling in extremities
+    - Any chest pain or difficulty breathing
+    
+    **Safe Training Principles:**
+    - Always warm up before intense activity
+    - Progress gradually - don't increase intensity too quickly
+    - Listen to your body - rest when needed
+    - Stay hydrated before, during, and after training
+    - Use proper equipment and maintain it regularly
+    
+    **For Youth Athletes:**
+    - Parental supervision recommended for athletes under 16
+    - Follow age-appropriate training volumes
+    - Prioritize skill development over winning
+    - Ensure adequate rest and recovery between sessions
+    """)
+
+# ============================================================================
+# FOOTER
+# ============================================================================
+st.markdown("---")
+st.markdown("""
+    <div style='text-align: center; color: #64748B; padding: 2rem 0;'>
+        <p><strong>CoachBot AI</strong> - Empowering the Next Generation of Tennis Players</p>
+        <p style='font-size: 0.95rem;'>🎾 Powered by Google Gemini 1.5 Pro | Built with Streamlit</p>
+        <p style='font-size: 0.85rem; margin-top: 1rem; color: #94A3B8;'>
+            Bridging the gap in professional coaching accessibility through AI technology
+        </p>
+        <p style='font-size: 0.75rem; margin-top: 1rem; color: #CBD5E1;'>
+            © 2026 CoachBot AI | Course: Generative AI (IDAI103) | NextGen Sports Lab Initiative
+        </p>
+    </div>
+""", unsafe_allow_html=True)
