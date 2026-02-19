@@ -39,7 +39,7 @@ CoachBot AI includes 10 specialized coaching modules:
 Each module is customized based on user input and safety guidelines.
 
 
-Link : https://8djvnhnd88d7ayua6gvizu.streamlit.app/
+Link : https://idai103--2505788--nikhilraimalani.streamlit.app/
 
 
 ---
